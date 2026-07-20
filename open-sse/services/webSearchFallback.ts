@@ -20,16 +20,26 @@ function toRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
 
+// True for the built-in web-search server tool. Matches the plain types
+// (`web_search`, `web_search_preview`) AND the versioned Anthropic dated
+// variants Claude Code actually sends (`web_search_20250305`, future
+// `web_search_YYYYMMDD`). A custom *function* tool that merely happens to be
+// named "web_search" carries a `function` field and is left untouched. Mirrors
+// the prefix match in webSearchRouting.ts::hasNativeWebSearchTool so the
+// rewriter and the router agree on what counts as a native web-search tool.
+function isWebSearchToolType(toolType: unknown): boolean {
+  if (typeof toolType !== "string") return false;
+  return WEB_SEARCH_TOOL_TYPES.has(toolType) || toolType.startsWith("web_search_");
+}
+
 function isBuiltInWebSearchTool(tool: unknown): tool is JsonRecord {
   const toolRecord = toRecord(tool);
-  const toolType = typeof toolRecord.type === "string" ? toolRecord.type : "";
-  return WEB_SEARCH_TOOL_TYPES.has(toolType) && !toolRecord.function;
+  return isWebSearchToolType(toolRecord.type) && !toolRecord.function;
 }
 
 function isBuiltInWebSearchToolChoice(toolChoice: unknown): boolean {
   const choice = toRecord(toolChoice);
-  const toolType = typeof choice.type === "string" ? choice.type : "";
-  return WEB_SEARCH_TOOL_TYPES.has(toolType);
+  return isWebSearchToolType(choice.type);
 }
 
 function buildFallbackDescription(tool: JsonRecord): string {
