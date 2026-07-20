@@ -313,3 +313,93 @@ test("#3384 end-to-end: interceptSearchOverride=true converts the tool on the Cl
   assert.equal(fallback.enabled, true);
   assert.equal(fallback.toolName, OMNIROUTE_WEB_SEARCH_FALLBACK_TOOL_NAME);
 });
+
+// Regression for the versioned Anthropic server-tool type. Claude Code sends the
+// built-in web search tool as { type: "web_search_20250305", name: "web_search" }
+// (a dated variant), NOT the plain { type: "web_search" }. The fallback rewriter
+// must recognize the versioned type and convert it to omniroute_web_search —
+// otherwise the dated server tool is forwarded to upstreams that don't implement
+// Anthropic server-side web search (e.g. GLM on the OpenAI transport), and the
+// model can never execute it ("Did 0 searches").
+
+test("versioned web_search_20250305 tool is rewritten to omniroute_web_search (Claude→OpenAI, intercept forced)", () => {
+  const body = {
+    model: "glm-5.2",
+    messages: [{ role: "user", content: "search the web for the latest news" }],
+    tools: [
+      { type: "web_search_20250305", name: "web_search", max_uses: 8 },
+      { type: "function", function: { name: "Bash", parameters: {} } },
+    ],
+  };
+
+  const { body: next, fallback } = prepareWebSearchFallbackBody(body, {
+    provider: "glm",
+    sourceFormat: "claude",
+    targetFormat: "openai",
+    nativeCodexPassthrough: false,
+    interceptSearchOverride: true,
+  });
+
+  assert.equal(fallback.enabled, true, "fallback must fire for the versioned tool");
+  assert.equal(fallback.convertedToolCount, 1, "the versioned web_search tool was converted");
+
+  const toolNames = (next.tools as Array<Record<string, unknown>>).map((t) => {
+    const fn = t.function as Record<string, unknown> | undefined;
+    return (fn?.name as string) || (t.name as string);
+  });
+  assert.ok(
+    toolNames.includes(OMNIROUTE_WEB_SEARCH_FALLBACK_TOOL_NAME),
+    "omniroute_web_search must be injected"
+  );
+  assert.ok(
+    !toolNames.includes("web_search"),
+    "the versioned web_search server tool must be removed"
+  );
+});
+
+test("versioned web_search_20250305 tool_choice is rewritten to the fallback tool", () => {
+  const body = {
+    model: "glm-5.2",
+    messages: [{ role: "user", content: "search the web" }],
+    tools: [{ type: "web_search_20250305", name: "web_search" }],
+    tool_choice: { type: "web_search_20250305", name: "web_search" },
+  };
+
+  const { body: next, fallback } = prepareWebSearchFallbackBody(body, {
+    provider: "glm",
+    sourceFormat: "claude",
+    targetFormat: "openai",
+    nativeCodexPassthrough: false,
+    interceptSearchOverride: true,
+  });
+
+  assert.equal(fallback.enabled, true);
+  const choice = next.tool_choice as Record<string, unknown>;
+  const fn = choice.function as Record<string, unknown> | undefined;
+  assert.equal(
+    fn?.name,
+    OMNIROUTE_WEB_SEARCH_FALLBACK_TOOL_NAME,
+    "tool_choice must point at the injected fallback tool"
+  );
+});
+
+test("versioned web_search_20250305 is NOT rewritten when native bypass applies (Claude→Claude passthrough)", () => {
+  const body = {
+    model: "claude-sonnet-5",
+    messages: [{ role: "user", content: "search the web" }],
+    tools: [{ type: "web_search_20250305", name: "web_search" }],
+  };
+
+  const { fallback } = prepareWebSearchFallbackBody(body, {
+    provider: "anthropic",
+    sourceFormat: "claude",
+    targetFormat: "claude",
+    nativeCodexPassthrough: false,
+  });
+
+  assert.equal(
+    fallback.enabled,
+    false,
+    "Claude→Claude passthrough forwards the native tool untouched"
+  );
+});
