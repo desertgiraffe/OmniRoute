@@ -345,20 +345,8 @@ export function isGlmProvider(providerId?: string | null) {
  * international) in the Add/Edit modals. Region resolves the default endpoint
  * (open.bigmodel.cn vs api.z.ai) when no Base URL override is set; an explicit
  * Base URL still wins at runtime (open-sse/handlers/search.ts::
- * resolveZaiPaasBaseUrl). Persisted as providerSpecificData.region (the handler
- * reads `region`, not `apiRegion`).
- */
-export function isZaiPaasSearchProvider(providerId?: string | null) {
-  return providerId === "zai-paas-search";
-}
-
-/**
- * Z.AI PAAS Web Search provider — reuses GLM's apiRegion dropdown (china/
- * international) in the Add/Edit modals. Region resolves the default endpoint
- * (open.bigmodel.cn vs api.z.ai) when no Base URL override is set; an explicit
- * Base URL still wins at runtime (open-sse/handlers/search.ts::
- * resolveZaiPaasBaseUrl). Persisted as providerSpecificData.region (the handler
- * reads `region`, not `apiRegion`).
+ * resolveZaiPaasBaseUrl). Persisted as providerSpecificData.apiRegion (same
+ * field name GLM uses; the handler/validator read apiRegion).
  */
 export function isZaiPaasSearchProvider(providerId?: string | null) {
   return providerId === "zai-paas-search";
