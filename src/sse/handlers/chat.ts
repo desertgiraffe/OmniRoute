@@ -599,6 +599,31 @@ export async function handleChat(
         sourceFormat: "claude",
         interceptSearchOverride: interceptOverride,
       });
+      if (!subRequest) {
+        // Diagnostic: a native web_search tool is present on /v1/messages but the
+        // sub-request detector did not match. Log why (without leaking the query)
+        // so mis-detection is visible. Reasons: intercept disabled, no server tool,
+        // or the message shape isn't the WebSearch sub-request prefix.
+        const msgs = Array.isArray((body as any).messages) ? (body as any).messages : [];
+        const msgCount = msgs.length;
+        const firstContent = msgCount > 0 && msgs[0] ? msgs[0].content : null;
+        const contentKind =
+          typeof firstContent === "string"
+            ? "string"
+            : Array.isArray(firstContent)
+              ? "array"
+              : typeof firstContent;
+        const contentPreview =
+          typeof firstContent === "string"
+            ? firstContent.slice(0, 40)
+            : Array.isArray(firstContent) && firstContent[0]?.text
+              ? String(firstContent[0].text).slice(0, 40)
+              : "";
+        log.info(
+          "WEBSEARCH-SYNTH",
+          `not a WebSearch sub-request (provider=${subProvider}, model=${subModel}, intercept=${interceptOverride}, msgs=${msgCount}, contentKind=${contentKind}, preview="${contentPreview}")`
+        );
+      }
       if (subRequest) {
         // Extract allowed_domains / blocked_domains from the server tool declaration.
         const serverTool = (Array.isArray((body as any).tools) ? (body as any).tools : []).find(
