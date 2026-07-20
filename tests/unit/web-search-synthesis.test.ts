@@ -41,6 +41,28 @@ test("isWebSearchSubRequest detects the Claude Code WebSearch sub-request and ex
   assert.equal(result?.query, "Elon Musk");
 });
 
+test("isWebSearchSubRequest detects the sub-request when content is a single text-block array (SDK serialization shape)", () => {
+  // Claude Code's Anthropic SDK sometimes serializes a string user message as a
+  // content-block array on the wire. The detector must handle both shapes.
+  const body = {
+    model: "glm/glm-4.7",
+    stream: true,
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: PREFIX + "weather today" }],
+      },
+    ],
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 8 }],
+  };
+  const result = isWebSearchSubRequest(body, {
+    provider: "glm",
+    sourceFormat: "claude",
+    interceptSearchOverride: true,
+  });
+  assert.equal(result?.query, "weather today");
+});
+
 test("isWebSearchSubRequest returns null when intercept is disabled", () => {
   const result = isWebSearchSubRequest(makeSubRequestBody("Elon Musk"), {
     provider: "glm",

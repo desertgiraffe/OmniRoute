@@ -77,6 +77,31 @@ type JsonRecord = Record<string, unknown>;
  * user message whose text starts with the hardcoded WebSearch prefix. Otherwise
  * null (fall through to existing behavior — do not break other web_search callers).
  */
+/**
+ * Extract the text of a user message's content, whether it's a plain string
+ * (the common case) or an Anthropic content-block array
+ * ([{type:"text", text:"..."}]). Claude Code's SDK sometimes serializes a
+ * string message as a single text block on the wire, so both shapes must work.
+ * Returns null if the content is not reducible to a single text string.
+ */
+function extractUserMessageText(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+  // Concatenate text blocks. A single text block is the expected shape; multiple
+  // is unusual but we handle it by joining (the prefix check still gates detection).
+  const parts: string[] = [];
+  for (const block of content) {
+    const b = block as JsonRecord | null;
+    if (b && b.type === "text" && typeof b.text === "string") {
+      parts.push(b.text);
+    } else {
+      // Non-text block (image, tool_use, etc.) → not a WebSearch sub-request.
+      return null;
+    }
+  }
+  return parts.length > 0 ? parts.join("") : null;
+}
+
 export function isWebSearchSubRequest(
   body: unknown,
   context: WebSearchSynthesisContext
@@ -92,13 +117,12 @@ export function isWebSearchSubRequest(
   const msg = messages[0] as JsonRecord | null;
   if (!msg || msg.role !== "user") return null;
 
-  // User message content can be a string or an array of content blocks. The
-  // WebSearch sub-request sends a plain string.
-  const content = msg.content;
-  if (typeof content !== "string") return null;
-  if (!content.startsWith(WEB_SEARCH_SUBREQUEST_PREFIX)) return null;
+  // User message content can be a plain string or an array of content blocks.
+  const text = extractUserMessageText(msg.content);
+  if (text === null) return null;
+  if (!text.startsWith(WEB_SEARCH_SUBREQUEST_PREFIX)) return null;
 
-  const query = content.slice(WEB_SEARCH_SUBREQUEST_PREFIX.length).trim();
+  const query = text.slice(WEB_SEARCH_SUBREQUEST_PREFIX.length).trim();
   if (!query) return null;
 
   return { query };
