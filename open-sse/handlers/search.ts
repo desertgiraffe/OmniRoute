@@ -591,10 +591,10 @@ function buildOllamaRequest(
   };
 }
 
-// Z.AI PAAS v4 Web Search base URLs by region. The `region` is read from the
-// connection's providerSpecificData (or provider_options); "china" targets
-// open.bigmodel.cn, everything else (incl. unset) the international api.z.ai.
-// An explicit baseUrl override (providerSpecificData.baseUrl) always wins.
+// Z.AI PAAS v4 Web Search base URLs by region. The `apiRegion` is read from the
+// connection's providerSpecificData (or provider_options) — same field name GLM
+// uses; "china" targets open.bigmodel.cn, everything else (incl. unset) the
+// international api.z.ai. An explicit baseUrl override always wins.
 const ZAI_PAAS_SEARCH_BASE_URLS = {
   china: "https://open.bigmodel.cn/api/paas/v4/web_search",
   international: "https://api.z.ai/api/paas/v4/web_search",
@@ -611,8 +611,8 @@ const ZAI_PAAS_RECENCY_FILTER: Record<string, string> = {
 function resolveZaiPaasBaseUrl(config: SearchProviderConfig, params: SearchRequestParams): string {
   const override = getProviderSettingString(params, "baseUrl");
   if (override) return override.replace(/\/+$/, "");
-  const region = getProviderSettingString(params, "region");
-  return region === "china"
+  const apiRegion = getProviderSettingString(params, "apiRegion");
+  return apiRegion === "china"
     ? ZAI_PAAS_SEARCH_BASE_URLS.china
     : ZAI_PAAS_SEARCH_BASE_URLS.international;
 }

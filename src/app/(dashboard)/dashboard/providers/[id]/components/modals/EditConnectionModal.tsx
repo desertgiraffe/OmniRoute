@@ -29,6 +29,7 @@ import {
   getProviderBaseUrlHint,
   getProviderBaseUrlPlaceholder,
   isGlmProvider,
+  isZaiPaasSearchProvider,
   parseRoutingTagsInput,
   parseExcludedModelsInput,
   formatRoutingTagsInput,
@@ -187,6 +188,7 @@ export default function EditConnectionModal({
   const isVertex = provider === "vertex" || provider === "vertex-partner";
   const { defaultRegion, showsRegion } = getProviderRegionConfig(provider);
   const isGlm = isGlmProvider(provider);
+  const isZaiPaasSearch = isZaiPaasSearchProvider(provider);
   const isCloudflare = provider === "cloudflare-ai";
   const openRouterPreset = useOpenRouterPresetControl(provider, t);
   const setOpenRouterPreset = openRouterPreset.setValue;
@@ -299,6 +301,7 @@ export default function EditConnectionModal({
         targetFormat: existingTargetFormat || "",
         cx: existingCx,
         region: existingRegion || (showsRegion ? defaultRegion : ""),
+        // GLM and zai-paas-search both persist apiRegion (same dropdown/field).
         apiRegion: (connection.providerSpecificData?.apiRegion as string) || "international",
         validationModelId: (connection.providerSpecificData?.validationModelId as string) || "",
         tag: (connection.providerSpecificData?.tag as string) || "",
@@ -560,6 +563,7 @@ export default function EditConnectionModal({
           trimmedCloudCodeProjectId,
           isGooglePse,
           isCcCompatible,
+          isZaiPaasSearch,
         });
       } else {
         updates.providerSpecificData = {
@@ -1084,28 +1088,28 @@ export default function EditConnectionModal({
           />
         )}
 
-        {isGlm && (
-          <div className="flex flex-col gap-3">
-            <div>
-              <label className="text-sm font-medium text-text-main mb-1 block">
-                {t("apiRegionLabel")}
-              </label>
-              <select
-                value={formData.apiRegion}
-                onChange={(e) => setFormData({ ...formData, apiRegion: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-              >
-                <option value="international">{t("apiRegionInternational")}</option>
-                <option value="china">{t("apiRegionChina")}</option>
-              </select>
-              <p className="text-xs text-text-muted mt-1">{t("apiRegionHint")}</p>
-            </div>
-            <GlmTeamQuotaFields
-              values={formData}
-              onChange={(patch) => setFormData({ ...formData, ...patch })}
-              t={t}
-            />
+        {(isGlm || isZaiPaasSearch) && (
+          <div>
+            <label className="text-sm font-medium text-text-main mb-1 block">
+              {t("apiRegionLabel")}
+            </label>
+            <select
+              value={formData.apiRegion}
+              onChange={(e) => setFormData({ ...formData, apiRegion: e.target.value })}
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+            >
+              <option value="international">{t("apiRegionInternational")}</option>
+              <option value="china">{t("apiRegionChina")}</option>
+            </select>
+            <p className="text-xs text-text-muted mt-1">{t("apiRegionHint")}</p>
           </div>
+        )}
+        {isGlm && (
+          <GlmTeamQuotaFields
+            values={formData}
+            onChange={(patch) => setFormData({ ...formData, ...patch })}
+            t={t}
+          />
         )}
 
         {!isOAuth && connection?.apiKey && (

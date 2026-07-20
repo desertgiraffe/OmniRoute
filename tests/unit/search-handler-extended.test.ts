@@ -1151,7 +1151,7 @@ test("handleSearch builds zai-paas-search requests (international default) and n
   }
 });
 
-test("handleSearch resolves zai-paas-search china region from providerSpecificData.region", async () => {
+test("handleSearch resolves zai-paas-search china region from providerSpecificData.apiRegion", async () => {
   const originalFetch = globalThis.fetch;
   let captured;
 
@@ -1173,7 +1173,7 @@ test("handleSearch resolves zai-paas-search china region from providerSpecificDa
       provider: "zai-paas-search",
       maxResults: 3,
       searchType: "web",
-      credentials: { apiKey: "zai-paas-key", providerSpecificData: { region: "china" } },
+      credentials: { apiKey: "zai-paas-key", providerSpecificData: { apiRegion: "china" } },
       log: null,
     });
 
@@ -1272,14 +1272,14 @@ test("handleSearch zai-paas-search explicit baseUrl override wins over region", 
       credentials: {
         apiKey: "zai-paas-key",
         providerSpecificData: {
-          region: "china",
+          apiRegion: "china",
           baseUrl: "https://my-proxy.example.com/web_search/",
         },
       },
       log: null,
     });
 
-    // Override wins over region; trailing slash stripped.
+    // Override wins over apiRegion; trailing slash stripped.
     assert.equal(captured.url, "https://my-proxy.example.com/web_search");
   } finally {
     globalThis.fetch = originalFetch;
