@@ -679,7 +679,7 @@ export async function handleChat(
           ? serverTool.blocked_domains
           : undefined;
         const wantsStream = body?.stream === true;
-        log.info(
+        log.debug(
           "WEBSEARCH-SYNTH",
           `WebSearch sub-request → synthesizing server-tool response for query "${subRequest.query}" (provider=${subProvider}, model=${subModel}, stream=${wantsStream})`
         );
