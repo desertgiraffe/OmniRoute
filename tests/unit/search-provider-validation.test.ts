@@ -157,3 +157,146 @@ test("bailian-coding-plan validation rejects 403 as invalid key", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+// ── zai-paas-search (Z.AI PAAS v4 Web Search) ──────────────────────────────
+// The validator re-resolves the region/baseUrl (mirroring the handler) and
+// probes POST /api/paas/v4/web_search with a minimal body. These tests guard
+// the region→endpoint mapping, the probe body shape, the baseUrl override, and
+// the status→valid mapping (401/403 invalid, 400/402 valid).
+
+test("zai-paas-search validation resolves china region to open.bigmodel.cn and probes the PAAS v4 body", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      body: JSON.parse(String(init.body || "{}")),
+    };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const result = await validateProviderApiKey({
+      provider: "zai-paas-search",
+      apiKey: "zai-paas-key",
+      providerSpecificData: { region: "china" },
+    });
+
+    assert.equal(result.valid, true);
+    assert.equal(result.error, null);
+    assert.equal(captured.url, "https://open.bigmodel.cn/api/paas/v4/web_search");
+    assert.equal(captured.headers.Authorization, "Bearer zai-paas-key");
+    assert.equal(captured.headers["Content-Type"], "application/json");
+    assert.deepEqual(captured.body, {
+      search_engine: "search-prime",
+      search_query: "test",
+      count: 1,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("zai-paas-search validation defaults to api.z.ai when no region is set", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url) => {
+    captured = { url: String(url) };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const result = await validateProviderApiKey({
+      provider: "zai-paas-search",
+      apiKey: "zai-paas-key",
+    });
+
+    assert.equal(result.valid, true);
+    assert.equal(captured.url, "https://api.z.ai/api/paas/v4/web_search");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("zai-paas-search validation honors an explicit baseUrl override over region", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url) => {
+    captured = { url: String(url) };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const result = await validateProviderApiKey({
+      provider: "zai-paas-search",
+      apiKey: "zai-paas-key",
+      providerSpecificData: {
+        region: "china",
+        baseUrl: "https://my-proxy.example.com/web_search/",
+      },
+    });
+
+    assert.equal(result.valid, true);
+    // Trailing slash stripped; override wins over region.
+    assert.equal(captured.url, "https://my-proxy.example.com/web_search");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("zai-paas-search validation rejects 401 as invalid key", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+
+  try {
+    const result = await validateProviderApiKey({
+      provider: "zai-paas-search",
+      apiKey: "bad-key",
+    });
+
+    assert.equal(result.valid, false);
+    assert.equal(result.error, "Invalid API key");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("zai-paas-search validation accepts 402 (credits-exhausted) as a valid key", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: "credits_exhausted" }), {
+      status: 402,
+      headers: { "content-type": "application/json" },
+    });
+
+  try {
+    const result = await validateProviderApiKey({
+      provider: "zai-paas-search",
+      apiKey: "valid-but-broke-key",
+    });
+
+    assert.equal(result.valid, true);
+    assert.equal(result.error, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

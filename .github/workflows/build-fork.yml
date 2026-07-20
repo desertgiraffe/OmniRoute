@@ -7,30 +7,44 @@ on:
       - "v*"
   workflow_dispatch:
 
-# Least-privilege default: read-only at the top level; the build job that pushes to
-# GHCR grants packages: write itself (Scorecard TokenPermissions).
+# Least-privilege default: read-only at the top level; the build and merge jobs that
+# push to GHCR grant packages: write themselves (Scorecard TokenPermissions).
 permissions:
   contents: read
 
 env:
-  IMAGE_NAME: ghcr.io/kang-heewon/omniroute
+  IMAGE_NAME: ghcr.io/desertgiraffe/omniroute
 
 jobs:
+  # One job per architecture on its OWN native runner. Building both arches in a
+  # single job (platforms: linux/amd64,linux/arm64) made the two concurrent builds
+  # contend on the shared apt cache mount (sharing=shared in the Dockerfile): both
+  # apt-get processes raced for /var/lib/apt/lists/lock, so one died with
+  # "Could not get lock ... exit code 100" and the sibling was cancelled (137).
+  # Per-arch jobs give each build an isolated builder + cache scope, which is also
+  # how the upstream docker-publish.yml builds. Native arm64 runners drop QEMU too.
   build:
-    name: Build and Push Fork Image
-    if: github.repository == 'kang-heewon/OmniRoute'
-    runs-on: ubuntu-latest
+    name: Build Fork Image (${{ matrix.arch }})
+    if: github.repository == 'desertgiraffe/OmniRoute'
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -42,7 +56,73 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
+      - name: Extract image labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.title=omniroute
+            org.opencontainers.image.description=Unified AI proxy/router — fork image
+            org.opencontainers.image.url=https://github.com/desertgiraffe/OmniRoute
+            org.opencontainers.image.source=https://github.com/desertgiraffe/OmniRoute
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push image by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runner-base
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=fork-${{ matrix.arch }}
+          cache-to: type=gha,scope=fork-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish multi-arch manifest
+    if: github.repository == 'desertgiraffe/OmniRoute'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Extract Docker metadata (tags)
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -51,21 +131,34 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
             type=ref,event=tag
-          labels: |
-            org.opencontainers.image.title=omniroute
-            org.opencontainers.image.description=Unified AI proxy/router — fork image
-            org.opencontainers.image.url=https://github.com/kang-heewon/OmniRoute
-            org.opencontainers.image.source=https://github.com/kang-heewon/OmniRoute
-            org.opencontainers.image.licenses=MIT
 
-      - name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: runner-base
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create multi-arch manifest from digests
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          tag_args=()
+          while IFS= read -r t; do
+            [ -n "$t" ] && tag_args+=(-t "$t")
+          done <<< "$TAGS"
+          refs=()
+          while IFS= read -r f; do
+            refs+=("${IMAGE_NAME}@sha256:$(basename "$f")")
+          done < <(find /tmp/digests -type f | sort)
+          if [ "${#refs[@]}" -eq 0 ]; then
+            echo "No image digests found to merge" >&2
+            exit 1
+          fi
+          if [ "${#tag_args[@]}" -eq 0 ]; then
+            echo "No tags resolved from metadata-action" >&2
+            exit 1
+          fi
+          docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
+
+      - name: Inspect published manifest
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          first_tag="$(printf '%s\n' "$TAGS" | head -n1)"
+          docker buildx imagetools inspect "$first_tag"

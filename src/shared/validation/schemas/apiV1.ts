@@ -184,6 +184,7 @@ export const v1SearchSchema = z
         "youcom-search",
         "searxng-search",
         "zai-search",
+        "zai-paas-search",
         "duckduckgo-free",
       ])
       .optional(),
