@@ -47,6 +47,7 @@ export function buildAddProviderSpecificData(options: {
   isGlm: boolean;
   isCloudflare: boolean;
   isCcCompatible?: boolean;
+  isZaiPaasSearch?: boolean;
 }) {
   const {
     provider,
@@ -61,6 +62,7 @@ export function buildAddProviderSpecificData(options: {
     isGlm,
     isCloudflare,
     isCcCompatible,
+    isZaiPaasSearch,
   } = options;
   const data: ProviderSpecificData = {};
   if (formData.customUserAgent.trim()) data.customUserAgent = formData.customUserAgent.trim();
@@ -82,6 +84,13 @@ export function buildAddProviderSpecificData(options: {
     data.apiRegion = formData.apiRegion;
     assignGlmTeamQuotaProviderData(isGlm, formData, data);
   } else if (isCloudflare && formData.accountId.trim()) data.accountId = formData.accountId.trim();
+  // zai-paas-search: persists providerSpecificData.apiRegion (same field name
+  // GLM uses; the handler/validator read apiRegion). Separate `if` (not
+  // else-if) so it coexists with the Base URL field — Base URL wins at runtime,
+  // apiRegion is the default when it's cleared.
+  if (isZaiPaasSearch) {
+    data.apiRegion = formData.apiRegion;
+  }
   if (isCcCompatible) assignCcCompatibleRequestDefaults(data, formData);
   return Object.keys(data).length > 0 ? data : undefined;
 }
@@ -102,6 +111,7 @@ export function assignEditApiKeyProviderSpecificData(options: {
   trimmedCloudCodeProjectId: string;
   isGooglePse: boolean;
   isCcCompatible: boolean;
+  isZaiPaasSearch?: boolean;
 }) {
   const o = options;
   Object.assign(o.target, {
@@ -126,6 +136,10 @@ export function assignEditApiKeyProviderSpecificData(options: {
     assignGlmTeamQuotaProviderData(o.isGlm, o.formData, o.target);
   } else if (o.isCloudflare && o.formData.accountId.trim()) {
     o.target.accountId = o.formData.accountId.trim();
+  }
+  // zai-paas-search: persists providerSpecificData.apiRegion (same as GLM).
+  if (o.isZaiPaasSearch) {
+    o.target.apiRegion = o.formData.apiRegion;
   }
   if (o.isAntigravityFamily) o.target.projectId = o.trimmedCloudCodeProjectId || null;
   if (isM365TierCapableProvider(o.provider)) applyM365Tier(o.target, o.formData.m365Tier ?? "");

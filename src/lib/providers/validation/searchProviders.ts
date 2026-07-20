@@ -170,19 +170,22 @@ export const SEARCH_VALIDATOR_CONFIGS: Record<
     // Region/baseUrl resolution for the credential-validation probe. Mirrors the
     // handler's per-credential resolution (open-sse/handlers/search.ts::
     // resolveZaiPaasBaseUrl): explicit baseUrl override wins; else "china" →
-    // open.bigmodel.cn, anything else → api.z.ai (international). NOTE: the
-    // handler additionally honors a per-request provider_options.region/baseUrl
+    // open.bigmodel.cn, anything else → api.z.ai (international). Region is read
+    // from providerSpecificData.apiRegion — same field name GLM uses. NOTE: the
+    // handler additionally honors a per-request provider_options.apiRegion/baseUrl
     // override (via getProviderSettingString) which is NOT re-validated here — a
     // key validated against one region can be re-targeted per request.
     const override =
       typeof providerSpecificData?.baseUrl === "string" && providerSpecificData.baseUrl.trim()
         ? providerSpecificData.baseUrl.trim().replace(/\/+$/, "")
         : "";
-    const region =
-      typeof providerSpecificData?.region === "string" ? providerSpecificData.region.trim() : "";
+    const apiRegion =
+      typeof providerSpecificData?.apiRegion === "string"
+        ? providerSpecificData.apiRegion.trim()
+        : "";
     const baseUrl =
       override ||
-      (region === "china"
+      (apiRegion === "china"
         ? "https://open.bigmodel.cn/api/paas/v4/web_search"
         : "https://api.z.ai/api/paas/v4/web_search");
     return {

@@ -184,7 +184,7 @@ test("zai-paas-search validation resolves china region to open.bigmodel.cn and p
     const result = await validateProviderApiKey({
       provider: "zai-paas-search",
       apiKey: "zai-paas-key",
-      providerSpecificData: { region: "china" },
+      providerSpecificData: { apiRegion: "china" },
     });
 
     assert.equal(result.valid, true);
@@ -244,7 +244,7 @@ test("zai-paas-search validation honors an explicit baseUrl override over region
       provider: "zai-paas-search",
       apiKey: "zai-paas-key",
       providerSpecificData: {
-        region: "china",
+        apiRegion: "china",
         baseUrl: "https://my-proxy.example.com/web_search/",
       },
     });
