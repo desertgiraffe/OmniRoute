@@ -1068,3 +1068,313 @@ test("handleSearch handles Z.AI Coding Plan non-array MCP result", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+// ── zai-paas-search (Z.AI PAAS v4 REST endpoint) ────────────────────────────
+// Mirrors the working manual curl against open.bigmodel.cn: POST
+// /api/paas/v4/web_search with {search_engine:"search-prime", search_query,
+// count, search_domain_filter, search_recency_filter}, Bearer auth, and a
+// {search_result:[{title,content,link,media,icon,refer,publish_date}]} reply.
+// Unlike the MCP zai-search, this endpoint is not gated by the GLM Coding Plan.
+
+test("handleSearch builds zai-paas-search requests (international default) and normalizes search_result", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      body: JSON.parse(String(init.body || "{}")),
+    };
+
+    return new Response(
+      JSON.stringify({
+        id: "task-1",
+        created: 1784533491,
+        request_id: "req-1",
+        search_result: [
+          {
+            title: "Adele - Hello (Official Music Video)",
+            content: "Adele - Hello (Official Music Video) @adele",
+            link: "https://www.youtube.com/watch?v=YQHsXMglC9A",
+            media: "youtube",
+            icon: "",
+            refer: "ref_1",
+            publish_date: "10 years ago",
+          },
+          {
+            title: "Hello - Wikipedia",
+            content: "Hello is a salutation or greeting in the English language.",
+            link: "https://en.wikipedia.org/wiki/Hello",
+            media: "wikipedia",
+            icon: "",
+            refer: "ref_2",
+            publish_date: "",
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  };
+
+  try {
+    const result = await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 5,
+      searchType: "web",
+      credentials: { apiKey: "zai-paas-key" },
+      log: null,
+    });
+
+    assert.equal(captured.url, "https://api.z.ai/api/paas/v4/web_search");
+    assert.equal(captured.headers.Authorization, "Bearer zai-paas-key");
+    assert.equal(captured.headers["Content-Type"], "application/json");
+    assert.deepEqual(captured.body, {
+      search_engine: "search-prime",
+      search_query: "hello",
+      count: 5,
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.data.provider, "zai-paas-search");
+    assert.equal(result.data.results.length, 2);
+    assert.equal(result.data.results[0].title, "Adele - Hello (Official Music Video)");
+    assert.equal(result.data.results[0].url, "https://www.youtube.com/watch?v=YQHsXMglC9A");
+    assert.equal(result.data.results[0].snippet, "Adele - Hello (Official Music Video) @adele");
+    assert.equal(result.data.results[0].published_at, "10 years ago");
+    assert.equal(result.data.results[0].metadata.source_type, "youtube");
+    assert.equal(result.data.results[0].citation.provider, "zai-paas-search");
+    assert.equal(result.data.results[1].title, "Hello - Wikipedia");
+    assert.equal(result.data.results[1].url, "https://en.wikipedia.org/wiki/Hello");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch resolves zai-paas-search china region from providerSpecificData.region", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      body: JSON.parse(String(init.body || "{}")),
+    };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 3,
+      searchType: "web",
+      credentials: { apiKey: "zai-paas-key", providerSpecificData: { region: "china" } },
+      log: null,
+    });
+
+    assert.equal(captured.url, "https://open.bigmodel.cn/api/paas/v4/web_search");
+    assert.equal(captured.headers.Authorization, "Bearer zai-paas-key");
+    assert.equal(captured.body.count, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch maps zai-paas-search time_range and include_domains to upstream filters", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      body: JSON.parse(String(init.body || "{}")),
+    };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handleSearch({
+      query: "fresh news",
+      provider: "zai-paas-search",
+      maxResults: 8,
+      searchType: "web",
+      timeRange: "week",
+      domainFilter: ["example.com", "docs.example.com"],
+      credentials: { apiKey: "zai-paas-key" },
+      log: null,
+    });
+
+    assert.equal(captured.body.search_query, "fresh news");
+    assert.equal(captured.body.count, 8);
+    assert.equal(captured.body.search_recency_filter, "oneWeek");
+    assert.equal(captured.body.search_domain_filter, "example.com,docs.example.com");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch returns empty results for zai-paas-search when search_result is missing", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ id: "t", created: 1, error: "something" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  try {
+    const result = await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 5,
+      searchType: "web",
+      credentials: { apiKey: "zai-paas-key" },
+      log: null,
+    });
+
+    // Operator-confirmed: keep the existing empty-results behavior (no error
+    // surfacing) — a missing/unparseable search_result yields results:[].
+    assert.equal(result.success, true);
+    assert.equal(result.data.results.length, 0);
+    assert.equal(result.data.metrics.total_results_available, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch zai-paas-search explicit baseUrl override wins over region", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = { url: String(url), body: JSON.parse(String(init.body || "{}")) };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 5,
+      searchType: "web",
+      credentials: {
+        apiKey: "zai-paas-key",
+        providerSpecificData: {
+          region: "china",
+          baseUrl: "https://my-proxy.example.com/web_search/",
+        },
+      },
+      log: null,
+    });
+
+    // Override wins over region; trailing slash stripped.
+    assert.equal(captured.url, "https://my-proxy.example.com/web_search");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch zai-paas-search omits search_recency_filter when time_range is any", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = { body: JSON.parse(String(init.body || "{}")) };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 5,
+      searchType: "web",
+      timeRange: "any",
+      credentials: { apiKey: "zai-paas-key" },
+      log: null,
+    });
+
+    assert.equal("search_recency_filter" in captured.body, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch zai-paas-search does not send exclude domains (PAAS v4 has no exclude field)", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured;
+
+  globalThis.fetch = async (url, init = {}) => {
+    captured = { body: JSON.parse(String(init.body || "{}")) };
+    return new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 5,
+      searchType: "web",
+      domainFilter: ["example.com", "-blocked.com"],
+      credentials: { apiKey: "zai-paas-key" },
+      log: null,
+    });
+
+    // Only includes are sent, comma-joined; no exclude key of any name.
+    assert.equal(captured.body.search_domain_filter, "example.com");
+    assert.equal(
+      Object.keys(captured.body).some((k) => k.includes("exclude")),
+      false,
+      "no exclude-related key should be sent"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("handleSearch zai-paas-search empty search_result array yields totalResults 0", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ id: "t", created: 1, search_result: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  try {
+    const result = await handleSearch({
+      query: "hello",
+      provider: "zai-paas-search",
+      maxResults: 5,
+      searchType: "web",
+      credentials: { apiKey: "zai-paas-key" },
+      log: null,
+    });
+
+    // An empty (but present) array is "zero results" (total 0), distinct from a
+    // missing array which is "unknown total" (null).
+    assert.equal(result.success, true);
+    assert.equal(result.data.results.length, 0);
+    assert.equal(result.data.metrics.total_results_available, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

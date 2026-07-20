@@ -241,6 +241,29 @@ export const SEARCH_PROVIDERS: Record<string, SearchProviderConfig> = {
     cacheTTLMs: 5 * 60 * 1000,
   },
 
+  // Z.AI PAAS v4 Web Search — the plain REST endpoint
+  // (POST /api/paas/v4/web_search, JSON {search_result: [...]}). Unlike
+  // `zai-search` above (MCP /api/mcp/web_search_prime/mcp), this endpoint is
+  // NOT gated by the GLM Coding Plan subscription — a standard Z.AI API key
+  // works. Region is resolved per-credential from providerSpecificData.region
+  // ("china" → open.bigmodel.cn, else api.z.ai) in the handler; an explicit
+  // providerSpecificData.baseUrl override wins.
+  "zai-paas-search": {
+    id: "zai-paas-search",
+    name: "Z.AI PAAS Web Search",
+    baseUrl: "https://api.z.ai/api/paas/v4/web_search",
+    method: "POST",
+    authType: "apikey",
+    authHeader: "bearer",
+    costPerQuery: 0,
+    freeMonthlyQuota: 0,
+    searchTypes: ["web"],
+    defaultMaxResults: 5,
+    maxMaxResults: 50,
+    timeoutMs: 10_000,
+    cacheTTLMs: 5 * 60 * 1000,
+  },
+
   // Free, no-API-key DuckDuckGo lite scraping (free-claude-code port). Last-resort
   // only (fallbackOnly): never auto-selected over a configured provider; served by
   // the dedicated HTML path in open-sse/handlers/search.ts (not the generic JSON one).
