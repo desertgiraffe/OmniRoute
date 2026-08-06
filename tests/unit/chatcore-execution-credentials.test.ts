@@ -33,6 +33,16 @@ test("native Codex passthrough injects requestEndpointPath", () => {
   assert.equal(out.requestEndpointPath, "/v1/responses");
 });
 
+test("native Responses passthrough (xAI via codex flag) injects requestEndpointPath (#8964)", () => {
+  // chatCore ORs xAI into nativeCodexPassthrough before calling this helper.
+  const out = resolveExecutionCredentials({
+    ...base,
+    provider: "xai-oauth",
+    nativeCodexPassthrough: true,
+  }) as Record<string, unknown>;
+  assert.equal(out.requestEndpointPath, "/v1/responses");
+});
+
 test("azure-ai + responses target forces apiType=responses and the upstream marker", () => {
   const out = resolveExecutionCredentials({
     ...base,

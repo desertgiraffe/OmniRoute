@@ -38,6 +38,8 @@ import {
 } from "./chatCore/executorHelpers.ts";
 import {
   shouldUseNativeCodexPassthrough,
+  shouldUseNativeXaiResponsesPassthrough,
+  stampNativeResponsesPassthroughBody,
   redactPassthroughThinkingSignatures,
   isClaudeCodeSemanticPassthroughRequest,
 } from "./chatCore/passthroughHelpers.ts";
@@ -56,6 +58,7 @@ import {
 // symbols from chatCore.ts (tests, sibling modules) keep resolving after the split.
 export {
   shouldUseNativeCodexPassthrough,
+  shouldUseNativeXaiResponsesPassthrough,
   redactPassthroughThinkingSignatures,
   isClaudeCodeSemanticPassthroughRequest,
   buildStreamingResponseHeaders,
@@ -634,6 +637,7 @@ export async function handleChatCore({
     sourceFormat,
     isResponsesEndpoint,
     nativeCodexPassthrough,
+    nativeXaiResponsesPassthrough,
     isDroidCLI,
     isOpencodeClient,
     copilotCompatibleReasoning,
@@ -753,7 +757,9 @@ export async function handleChatCore({
     apiFormat,
     customModelTargetFormat,
     providerSpecificData: credentials?.providerSpecificData,
+    nativeXaiResponsesPassthrough,
   });
+  const nativeResponsesPassthrough = nativeCodexPassthrough || nativeXaiResponsesPassthrough;
 
   const initialProviderRequest =
     body && typeof body === "object" && !Array.isArray(body)
@@ -793,7 +799,7 @@ export async function handleChatCore({
       provider,
       sourceFormat,
       targetFormat,
-      nativeCodexPassthrough,
+      nativeCodexPassthrough: nativeResponsesPassthrough,
       interceptSearchOverride,
     });
   if (webSearchFallbackPlan.enabled) {
@@ -811,7 +817,7 @@ export async function handleChatCore({
       provider,
       sourceFormat,
       targetFormat,
-      nativeCodexPassthrough,
+      nativeCodexPassthrough: nativeResponsesPassthrough,
       interceptFetchOverride,
     });
   if (webFetchFallbackPlan.enabled) {
@@ -1981,9 +1987,17 @@ export async function handleChatCore({
   ) => normalizeClaudeUpstreamMessagesFor(payload, options, log);
 
   try {
-    if (nativeCodexPassthrough) {
-      translatedBody = { ...body, _nativeCodexPassthrough: true };
-      log?.debug?.("FORMAT", "native codex passthrough enabled");
+    if (nativeResponsesPassthrough) {
+      translatedBody = stampNativeResponsesPassthroughBody(
+        body,
+        nativeCodexPassthrough ? "codex" : "xai"
+      );
+      log?.debug?.(
+        "FORMAT",
+        nativeCodexPassthrough
+          ? "native codex passthrough enabled"
+          : "native xAI Responses Agent Tools passthrough enabled"
+      );
     } else if (isClaudeCodeCompatible) {
       let normalizedForCc = { ...body };
 
@@ -2621,7 +2635,7 @@ export async function handleChatCore({
   const getExecutionCredentials = () =>
     resolveExecutionCredentialsFor({
       credentials,
-      nativeCodexPassthrough,
+      nativeCodexPassthrough: nativeResponsesPassthrough,
       endpointPath,
       targetFormat,
       provider,

@@ -232,9 +232,13 @@ export function filterUsageForFormat(usage, targetFormat) {
     [FORMATS.OPENAI_RESPONSES]: [
       "input_tokens",
       "output_tokens",
+      "total_tokens",
       "input_tokens_details",
       "output_tokens_details",
       "estimated",
+      "cost_in_usd_ticks",
+      "server_side_tool_usage_details",
+      "server_side_tool_usage",
     ],
     // OpenAI format (default for OPENAI, CODEX, KIRO, etc.)
     default: [

@@ -20,14 +20,27 @@ export function resolveChatCoreTargetFormat(opts: {
   apiFormat: string | undefined;
   customModelTargetFormat: string | undefined;
   providerSpecificData: unknown;
+  nativeXaiResponsesPassthrough?: boolean;
 }) {
-  const { provider, resolvedModel, apiFormat, customModelTargetFormat, providerSpecificData } = opts;
+  const {
+    provider,
+    resolvedModel,
+    apiFormat,
+    customModelTargetFormat,
+    providerSpecificData,
+    nativeXaiResponsesPassthrough = false,
+  } = opts;
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;
   const modelTargetFormat = getModelTargetFormat(alias, resolvedModel);
-  const targetFormat =
+  let targetFormat =
     apiFormat === "responses"
       ? FORMATS.OPENAI_RESPONSES
-      : modelTargetFormat || customModelTargetFormat || getTargetFormat(provider, providerSpecificData);
+      : modelTargetFormat ||
+        customModelTargetFormat ||
+        getTargetFormat(provider, providerSpecificData);
+  // #9111: force the Responses target format for native xAI Agent Tools
+  // passthrough so web_search/x_search reach api.x.ai's /v1/responses raw.
+  if (nativeXaiResponsesPassthrough) targetFormat = FORMATS.OPENAI_RESPONSES;
   return { alias, targetFormat };
 }
 

@@ -7,6 +7,7 @@ export const COPILOT_REASONING_SUMMARY_MARKER = "_omnirouteCopilotReasoningSumma
 
 // Forward-compatible regex: matches web_search, web_search_20250305, and future versioned names.
 export const WEB_SEARCH_TOOL_TYPES = /^web_search/;
+export const X_SEARCH_TOOL_TYPES = /^x_search/;
 // tool_search is a Responses API built-in sent by newer Codex clients; it has no Chat Completions
 // equivalent and must be silently dropped (not rejected with 400).
 export const TOOL_SEARCH_TOOL_TYPES = /^tool_search/;
