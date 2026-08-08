@@ -1,6 +1,7 @@
 /**
  * Vision Bridge helper functions for image processing.
  */
+import { detectMediaParts, type MediaPart } from "@omniroute/open-sse/utils/mediaParts";
 import { fetchRemoteImage } from "@/shared/network/remoteImageFetch";
 import { getRuntimePorts } from "@/lib/runtime/ports";
 import { resolveSelfLoopBearer } from "@/shared/middleware/chatBodyAdmission";
@@ -181,7 +182,6 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
   }
 
   return results;
-}
 
 /**
  * Resolve image URL to data URI format for vision model.
@@ -237,6 +237,19 @@ export interface VisionModelConfig {
   prompt: string;
   timeoutMs: number;
   maxImages: number;
+}
+
+/** Task-aware focus hint (codex-vision-proxy pattern): steer the description
+ * toward what the user actually asked, instead of a generic caption. */
+export function composeVisionPrompt(
+  basePrompt: string,
+  lastUserText: string | undefined,
+  taskAware: boolean
+): string {
+  const text = (lastUserText ?? "").trim();
+  if (!taskAware || !text) return basePrompt;
+  const hint = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+  return `${basePrompt}\n\nThe user asked: "${hint}". Focus your description on what is relevant to answering this, and transcribe any text visible in the image.`;
 }
 
 /**
@@ -706,7 +719,11 @@ export function replaceImageParts(
   // `null` keeps the original image (#4012). Returns true if the part was an
   // image (consumed a description slot), false to pass the part through.
   const replaceImagePart = (part: Record<string, unknown>): unknown => {
-    if (part?.type !== "image_url" && part?.type !== "image") {
+    // `input_image` (Responses API) is read through a widened check: it is not
+    // part of the historical content-part union but MUST be replaceable —
+    // extractImageParts extracts it, and every extracted part needs a matching
+    // splice here (extract↔replace contract).
+    if (part?.type !== "image_url" && part?.type !== "image" && part?.type !== "input_image") {
       return part;
     }
     if (descriptionIndex >= descriptions.length) {
