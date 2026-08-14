@@ -137,4 +137,15 @@ export const SEARCH_PROVIDERS = {
     website: "https://ollama.com/settings/keys",
     authHint: "Same API key as Ollama Cloud (from ollama.com/settings/keys)",
   },
+  "zai-paas-search": {
+    id: "zai-paas-search",
+    alias: "zai-paas-search",
+    name: "Z.AI PAAS Web Search",
+    icon: "search",
+    color: "#2563EB",
+    textIcon: "ZA",
+    website: "https://bigmodel.cn",
+    authHint:
+      "Standard Z.AI API key from https://open.bigmodel.cn/usercenter/apikeys. Set region to 'china' for open.bigmodel.cn, else api.z.ai (international).",
+  },
 };
