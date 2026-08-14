@@ -70,14 +70,6 @@ export interface WebSearchSynthesisDeps {
 type JsonRecord = Record<string, unknown>;
 
 /**
- * Detect Claude Code's WebSearch sub-request and extract the query.
- *
- * Returns {query} when ALL hold: Anthropic source format, a native web_search
- * server tool present, interception enabled for the provider/model, and a single
- * user message whose text starts with the hardcoded WebSearch prefix. Otherwise
- * null (fall through to existing behavior — do not break other web_search callers).
- */
-/**
  * Extract the text of a user message's content, whether it's a plain string
  * (the common case) or an Anthropic content-block array
  * ([{type:"text", text:"..."}]). Claude Code's SDK sometimes serializes a
@@ -102,6 +94,14 @@ function extractUserMessageText(content: unknown): string | null {
   return parts.length > 0 ? parts.join("") : null;
 }
 
+/**
+ * Detect Claude Code's WebSearch sub-request and extract the query.
+ *
+ * Returns {query} when ALL hold: Anthropic source format, a native web_search
+ * server tool present, interception enabled for the provider/model, and a single
+ * user message whose text starts with the hardcoded WebSearch prefix. Otherwise
+ * null (fall through to existing behavior — do not break other web_search callers).
+ */
 export function isWebSearchSubRequest(
   body: unknown,
   context: WebSearchSynthesisContext
