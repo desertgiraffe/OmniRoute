@@ -205,3 +205,64 @@ test("extractImageParts supports both base64 and url source blocks in one messag
   assert.strictEqual(result[1].imageType, "url");
   assert.strictEqual(result[1].imageUrl, "https://example.com/B.png");
 });
+
+test("extractImageParts detects images nested inside tool_result (Read-tool case)", () => {
+  // Claude Code's Read tool returns an image nested inside a tool_result block:
+  //   { role: "user", content: [ { type: "tool_result", tool_use_id, content: [
+  //     { type: "image", source: { type: "base64", ... } } ] } ] }
+  // Without recursing into tool_result.content[], the bridge never sees the
+  // image, so it passes through to a text-only upstream and 400s.
+  const messages = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "toolu_read_01",
+          content: [
+            { type: "text", text: "Read image (63.3KB)" },
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/jpeg", data: "AAA=" },
+            },
+          ],
+        },
+      ],
+    },
+  ] as unknown as RequestMessage[];
+  const result = extractImageParts(messages);
+  assert.strictEqual(result.length, 1, "nested tool_result image must be extracted");
+  assert.strictEqual(result[0].imageType, "image");
+  assert.strictEqual(result[0].imageUrl, "data:image/jpeg;base64,AAA=");
+});
+
+test("extractImageParts recurses into tool_result with multiple nested images", () => {
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "look at these" },
+        {
+          type: "tool_result",
+          tool_use_id: "toolu_read_01",
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "BBB=" },
+            },
+            { type: "text", text: "and" },
+            {
+              type: "image",
+              source: { type: "url", url: "https://example.com/nested.png" },
+            },
+          ],
+        },
+      ],
+    },
+  ] as unknown as RequestMessage[];
+  const result = extractImageParts(messages);
+  assert.strictEqual(result.length, 2, "both nested images must be extracted in order");
+  assert.strictEqual(result[0].imageUrl, "data:image/png;base64,BBB=");
+  assert.strictEqual(result[1].imageType, "url");
+  assert.strictEqual(result[1].imageUrl, "https://example.com/nested.png");
+});

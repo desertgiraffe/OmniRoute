@@ -118,6 +118,37 @@ export type RequestContentPart =
  * vision-bridge guardrail, so the image was silently dropped by a text-only
  * executor instead of being described.
  */
+/**
+ * Extract a single image part into `results`, returning true if it matched.
+ * Shared by the top-level and nested (tool_result) walk so both paths apply the
+ * same shape detection in the same order.
+ */
+function collectImagePart(
+  part: unknown,
+  messageIndex: number,
+  partIndex: number,
+  results: ImagePart[]
+): void {
+  const p = part as Record<string, unknown> | null;
+  if (!p) return;
+
+  if (p.type === "image_url") {
+    const url = (p.image_url as { url?: string } | undefined)?.url;
+    if (url) {
+      results.push({ messageIndex, partIndex, imageUrl: url, imageType: "image_url" });
+    }
+  } else if (p.type === "image") {
+    const source = p.source as
+      { type?: string; url?: string; media_type?: string; data?: string } | undefined;
+    if (source?.type === "base64") {
+      const dataUri = `data:${source.media_type};base64,${source.data}`;
+      results.push({ messageIndex, partIndex, imageUrl: dataUri, imageType: "image" });
+    } else if (source?.type === "url" && source.url) {
+      results.push({ messageIndex, partIndex, imageUrl: source.url, imageType: "url" });
+    }
+  }
+}
+
 export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
   const results: ImagePart[] = [];
 
@@ -132,35 +163,20 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
     }
 
     for (let partIdx = 0; partIdx < message.content.length; partIdx++) {
-      const part = message.content[partIdx];
+      const part = message.content[partIdx] as Record<string, unknown> | null;
 
-      if (part?.type === "image_url" && part.image_url?.url) {
-        results.push({
-          messageIndex: msgIdx,
-          partIndex: partIdx,
-          imageUrl: part.image_url.url,
-          imageType: "image_url",
-        });
-      } else if (part?.type === "image" && part.source?.type === "base64") {
-        const { media_type, data } = part.source;
-        const dataUri = `data:${media_type};base64,${data}`;
-        results.push({
-          messageIndex: msgIdx,
-          partIndex: partIdx,
-          imageUrl: dataUri,
-          imageType: "image",
-        });
-      } else if (part?.type === "image" && part.source?.type === "url") {
-        const url = part.source.url;
-        if (url) {
-          results.push({
-            messageIndex: msgIdx,
-            partIndex: partIdx,
-            imageUrl: url,
-            imageType: "url",
-          });
+      // A tool_result (Claude Code Read tool, etc.) carries its own content
+      // array; images nested there — e.g. a screenshot returned by Read — are
+      // invisible to a top-level-only walk, so they leak through to text-only
+      // upstreams (#read-tool-400). Recurse so the bridge describes them too.
+      if (part?.type === "tool_result" && Array.isArray(part.content)) {
+        for (const nestedPart of part.content as unknown[]) {
+          collectImagePart(nestedPart, msgIdx, partIdx, results);
         }
+        continue;
       }
+
+      collectImagePart(part, msgIdx, partIdx, results);
     }
   }
 
@@ -686,33 +702,49 @@ export function replaceImageParts(
 
   let descriptionIndex = 0;
 
+  // Splice the next description in place of an image part, preserving order.
+  // `null` keeps the original image (#4012). Returns true if the part was an
+  // image (consumed a description slot), false to pass the part through.
+  const replaceImagePart = (part: Record<string, unknown>): unknown => {
+    if (part?.type !== "image_url" && part?.type !== "image") {
+      return part;
+    }
+    if (descriptionIndex >= descriptions.length) {
+      return part;
+    }
+    const description = descriptions[descriptionIndex];
+    descriptionIndex++;
+    if (description == null) {
+      return part;
+    }
+    return { type: "text", text: description };
+  };
+
   for (let msgIdx = 0; msgIdx < result.messages.length; msgIdx++) {
     const message = result.messages[msgIdx];
     if (!message || !Array.isArray(message.content)) {
       continue;
     }
 
-    const newContent: RequestContentPart[] = [];
+    const newContent: unknown[] = [];
 
     for (const part of message.content) {
-      if (part?.type === "image_url" || part?.type === "image") {
-        if (descriptionIndex < descriptions.length) {
-          const description = descriptions[descriptionIndex];
-          descriptionIndex++;
-          if (description == null) {
-            // #4012: describe failed for this image — preserve the original
-            // image so a vision-capable upstream can still process it.
-            newContent.push(part as RequestContentPart);
-          } else {
-            newContent.push({ type: "text", text: description });
-          }
-        }
-      } else {
-        newContent.push(part as RequestContentPart);
+      const p = part as Record<string, unknown>;
+
+      // Recurse into tool_result.content[] so nested Read-tool images are
+      // spliced in the same order extractImageParts visited them.
+      if (p?.type === "tool_result" && Array.isArray(p.content)) {
+        p.content = (p.content as unknown[]).map((nested) =>
+          replaceImagePart(nested as Record<string, unknown>)
+        );
+        newContent.push(p);
+        continue;
       }
+
+      newContent.push(replaceImagePart(p));
     }
 
-    message.content = newContent;
+    message.content = newContent as RequestContentPart[];
   }
 
   return result;
