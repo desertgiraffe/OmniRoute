@@ -204,7 +204,7 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
   // replaceImageParts can splice back — the extract↔replace contract: every
   // extracted part MUST be replaceable, in the same order, or the positional
   // descriptions shift onto the wrong images.
-  return detectMediaParts(messages)
+  const results = detectMediaParts(messages)
     .filter((p) => p.kind === "image" && !p.nested && REPLACEABLE_IMAGE_SHAPES.has(p.shape))
     .map((p) => ({
       messageIndex: p.messageIndex,
@@ -213,6 +213,48 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
       imageType:
         p.shape === "image_base64" ? "image" : p.shape === "image_source_url" ? "url" : "image_url",
     }));
+
+  // Fork-local: detectMediaParts deliberately skips nested hits (its
+  // replaceImageParts can only splice top-level parts). But Claude Code's Read
+  // tool returns images nested inside tool_result blocks — without recursing
+  // into tool_result.content[], those images are invisible and leak through to
+  // text-only upstreams (#read-tool-400). Manually scan tool_result blocks
+  // for replaceable image shapes, appended AFTER the top-level results so the
+  // extract↔replace order stays consistent with the replace recursion below.
+  if (Array.isArray(messages)) {
+    for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
+      const message = messages[msgIdx];
+      if (!message || !Array.isArray(message.content)) continue;
+      for (let partIdx = 0; partIdx < message.content.length; partIdx++) {
+        const part = message.content[partIdx] as Record<string, unknown> | null;
+        if (part?.type === "tool_result" && Array.isArray(part.content)) {
+          for (const nested of part.content as unknown[]) {
+            const np = nested as Record<string, unknown> | null;
+            if (!np) continue;
+            const npType = typeof np.type === "string" ? np.type : "";
+            if (REPLACEABLE_IMAGE_SHAPES.has(npType as MediaPart["shape"])) {
+              if (npType === "image_url") {
+                const url = (np.image_url as { url?: string } | undefined)?.url;
+                if (url) results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: url, imageType: "image_url" });
+              } else if (npType === "image") {
+                const source = np.source as { type?: string; media_type?: string; data?: string; url?: string } | undefined;
+                if (source?.type === "base64") {
+                  results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: `data:${source.media_type};base64,${source.data}`, imageType: "image" });
+                } else if (source?.type === "url" && source.url) {
+                  results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: source.url, imageType: "url" });
+                }
+              } else if (npType === "input_image") {
+                const url = typeof np.image_url === "string" ? np.image_url : (np.image_url as { url?: string } | undefined)?.url;
+                if (url) results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: url, imageType: "image_url" });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 // Undici fetch with a browser-ish User-Agent: Wikimedia (and other CDNs)
@@ -931,6 +973,26 @@ export function replaceImageParts(
     const newContent: RequestContentPart[] = [];
 
     for (const part of message.content) {
+      // Fork-local: recurse into tool_result.content[] so nested Read-tool
+      // images are spliced in the same order extractImageParts visited them.
+      const partRecord = part as Record<string, unknown> | null;
+      if (partRecord?.type === "tool_result" && Array.isArray(partRecord.content)) {
+        partRecord.content = (partRecord.content as unknown[]).map((nested) => {
+          const np = nested as Record<string, unknown> | null;
+          const npType = (np as { type?: string } | null | undefined)?.type;
+          if (npType === "image_url" || npType === "image" || npType === "input_image") {
+            if (descriptionIndex < descriptions.length) {
+              const description = descriptions[descriptionIndex];
+              descriptionIndex++;
+              if (description == null) return nested;
+              return { type: replacementTextType, text: description } as RequestContentPart;
+            }
+          }
+          return nested;
+        });
+        newContent.push(part as RequestContentPart);
+        continue;
+      }
       // `input_image` (Responses API) is read through a widened type: it is
       // not part of the historical RequestContentPart union but MUST be
       // replaceable — extractImageParts allowlists it, and every extracted

@@ -251,3 +251,75 @@ test("replaceImageParts handles mixed images and text", () => {
   assert.strictEqual(content[2].type, "text");
   assert.strictEqual(content[2].text, "[Image 2]: Second image");
 });
+
+test("replaceImageParts replaces images nested inside tool_result", () => {
+  // Read-tool images live inside a tool_result block; the bridge must recurse
+  // into tool_result.content[] and splice the description back in place.
+  const body = {
+    model: "glm/glm-5.2",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_read_01",
+            content: [
+              { type: "text", text: "Read image (63.3KB)" },
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/jpeg", data: "AAA=" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const descriptions = ["[Image 1]: A sunset"];
+  const result = replaceImageParts(body, descriptions);
+
+  const toolResult = (
+    result.messages[0].content as Array<{ type: string; content?: unknown[] }>
+  )[0];
+  assert.strictEqual(toolResult.type, "tool_result");
+  const inner = toolResult.content as Array<{ type: string; text?: string }>;
+  // text part preserved
+  assert.strictEqual(inner[0].type, "text");
+  assert.strictEqual(inner[0].text, "Read image (63.3KB)");
+  // image replaced with description
+  assert.strictEqual(inner[1].type, "text");
+  assert.strictEqual(inner[1].text, "[Image 1]: A sunset");
+});
+
+test("replaceImageParts preserves null-description nested image (describe failed)", () => {
+  // #4012: a failed describe (null) must keep the original nested image.
+  const body = {
+    model: "glm/glm-5.2",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_read_01",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: "image/png", data: "AAA=" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const descriptions = [null];
+  const result = replaceImageParts(body, descriptions);
+
+  const inner = (result.messages[0].content as Array<{ type: string; content?: unknown[] }>)[0]
+    .content as Array<{ type: string }>;
+  assert.strictEqual(inner[0].type, "image", "null description preserves original nested image");
+});
