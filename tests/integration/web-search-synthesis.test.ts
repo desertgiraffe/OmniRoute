@@ -64,7 +64,7 @@ test.after(() => {
 test("WebSearch sub-request on /v1/messages is short-circuited to a synthetic server-tool SSE response", async () => {
   await seedConnection("zai-paas-search", {
     apiKey: "zai-paas-key",
-    providerSpecificData: { region: "china" },
+    providerSpecificData: { apiRegion: "china" },
   });
   await enableGlmIntercept();
 
