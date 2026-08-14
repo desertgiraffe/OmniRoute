@@ -15,6 +15,7 @@ import {
   getProviderBaseUrlHint,
   getProviderBaseUrlPlaceholder,
   isGlmProvider,
+  isZaiPaasSearchProvider,
   getWebSessionCredentialLabel,
   getWebSessionCredentialHint,
   getWebSessionCredentialCheckLabel,
@@ -87,6 +88,7 @@ export default function AddApiKeyModal({
   const { defaultRegion, showsRegion } = ProviderRegion.getProviderRegionConfig(provider);
   const isModal = provider === "modal";
   const isGlm = isGlmProvider(provider);
+  const isZaiPaasSearch = isZaiPaasSearchProvider(provider);
   const isQoder = provider === "qoder";
   const openRouterPreset = useOpenRouterPresetControl(provider, t);
   const isCloudflare = provider === "cloudflare-ai";
@@ -338,6 +340,7 @@ export default function AddApiKeyModal({
         isGlm,
         isCloudflare,
         isCcCompatible,
+        isZaiPaasSearch,
       });
 
       const payload = {
@@ -916,28 +919,28 @@ export default function AddApiKeyModal({
                 hint={t("accountIdHint")}
               />
             )}
-            {isGlm && (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className="text-sm font-medium text-text-main mb-1 block">
-                    {t("apiRegionLabel")}
-                  </label>
-                  <select
-                    value={formData.apiRegion}
-                    onChange={(e) => setFormData({ ...formData, apiRegion: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
-                  >
-                    <option value="international">{t("apiRegionInternational")}</option>
-                    <option value="china">{t("apiRegionChina")}</option>
-                  </select>
-                  <p className="text-xs text-text-muted mt-1">{t("apiRegionHint")}</p>
-                </div>
-                <GlmTeamQuotaFields
-                  values={formData}
-                  onChange={(patch) => setFormData({ ...formData, ...patch })}
-                  t={t}
-                />
+            {(isGlm || isZaiPaasSearch) && (
+              <div>
+                <label className="text-sm font-medium text-text-main mb-1 block">
+                  {t("apiRegionLabel")}
+                </label>
+                <select
+                  value={formData.apiRegion}
+                  onChange={(e) => setFormData({ ...formData, apiRegion: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:border-primary"
+                >
+                  <option value="international">{t("apiRegionInternational")}</option>
+                  <option value="china">{t("apiRegionChina")}</option>
+                </select>
+                <p className="text-xs text-text-muted mt-1">{t("apiRegionHint")}</p>
               </div>
+            )}
+            {isGlm && (
+              <GlmTeamQuotaFields
+                values={formData}
+                onChange={(patch) => setFormData({ ...formData, ...patch })}
+                t={t}
+              />
             )}
             <div className="flex gap-2">
               <Button
