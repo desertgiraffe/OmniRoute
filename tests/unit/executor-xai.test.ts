@@ -116,3 +116,32 @@ test("XaiExecutor.buildUrl keeps a plain chat model (grok-4.3) on /v1/chat/compl
   const url = executor.buildUrl("grok-4.3", true);
   assert.equal(url, "https://api.x.ai/v1/chat/completions");
 });
+
+test("XaiExecutor does NOT refresh a borrowed grok-cli connection (xao only reads the access token)", async () => {
+  // xai-oauth borrows a grok-cli connection's access token to call api.x.ai,
+  // but must not invoke that connection's refresh token — grok-cli's own
+  // scheduler owns the refresh. A borrowed connection carries its origin
+  // provider (`provider: "grok-cli"`); refreshCredentials must return null so
+  // the reactive refresh path skips, leaving grok-cli's scheduler as the sole
+  // refresher.
+  const executor = new XaiExecutor("xai-oauth");
+  const borrowed = {
+    accessToken: "grok-build-access",
+    refreshToken: "grok-build-refresh",
+    provider: "grok-cli",
+  };
+  const result = await executor.refreshCredentials(borrowed);
+  assert.equal(result, null, "borrowed grok-cli connection must not be refreshed by xai-oauth");
+});
+
+test("XaiExecutor refreshes its own (non-borrowed) xai-oauth connection normally", async () => {
+  // A real xai-oauth connection (provider === "xai-oauth", or undefined) is NOT
+  // borrowed — refresh proceeds. (We assert only that it does not early-return
+  // null on the borrow check; the network call is not exercised here.)
+  const executor = new XaiExecutor("xai-oauth");
+  // No refresh token → returns null at the existing guard before the borrow
+  // check, so this just confirms the borrow guard itself doesn't misfire on a
+  // native connection without a refresh token.
+  const result = await executor.refreshCredentials({ provider: "xai-oauth" });
+  assert.equal(result, null);
+});

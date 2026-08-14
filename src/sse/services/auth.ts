@@ -950,6 +950,16 @@ export { fisherYatesShuffle, getNextFromDeckSync as getNextFromDeck };
 const PROVIDER_SEARCH_PAIRS: string[][] = [
   ["nvidia", "nvidia_nim"],
   ["kimi-coding", "kimi-coding-apikey"],
+  // grok-cli (Grok Build, cli-chat-proxy.grok.com) and xai-oauth (xao,
+  // api.x.ai) share the same OAuth client_id (grok_id) and token endpoint
+  // (auth.x.ai/oauth2/token). An operator with a working Grok Build connection
+  // can use api.x.ai — e.g. for native web_search/x_search passthrough (#9111)
+  // — without pasting credentials into a separate xai-oauth connection: xao
+  // transparently borrows the grok-cli connection's access + refresh tokens.
+  // The borrowed connection still executes under xai-oauth's own executor
+  // (api.x.ai URLs, auth.x.ai refresh logic in XaiExecutor), so no manual
+  // copying or xao refresh-token entry is needed.
+  ["xai-oauth", "grok-cli"],
 ];
 /**
  * Resolve provider aliases (e.g., nvidia -> nvidia_nim) for DB lookup

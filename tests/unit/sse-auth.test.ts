@@ -1096,6 +1096,34 @@ test("getProviderCredentials resolves the nvidia special alias pool", async () =
   assert.equal(selected.connectionId, connection.id);
 });
 
+test("getProviderCredentials borrows grok-cli credentials for xai-oauth (shared auth.x.ai OAuth client)", async () => {
+  // grok-cli (Grok Build) and xai-oauth (xao, api.x.ai) share the same OAuth
+  // client_id (grok_id) and token endpoint (auth.x.ai). An operator with a
+  // working Grok Build connection should be able to use api.x.ai (for native
+  // web_search/x_search via #9111) WITHOUT pasting credentials into a separate
+  // xai-oauth connection — xai-oauth transparently borrows the grok-cli
+  // connection's access token. The borrowed connection carries its origin
+  // provider (`provider: "grok-cli"`) so XaiExecutor can detect the borrow and
+  // SKIP refresh — grok-cli's own scheduler refreshes its token; xao only reads
+  // the access token and never invokes the refresh token.
+  const connection = await seedConnection("grok-cli", {
+    authType: "oauth",
+    name: "grok-build-shared",
+    apiKey: null,
+    accessToken: "grok-build-access-token",
+    refreshToken: "grok-build-refresh-token",
+  });
+
+  const selected = await auth.getProviderCredentials("xai-oauth");
+
+  assert.equal(selected.connectionId, connection.id);
+  assert.equal(selected.accessToken, "grok-build-access-token");
+  assert.equal(selected.refreshToken, "grok-build-refresh-token");
+  // Origin provider is preserved so XaiExecutor can detect the borrow and skip
+  // its own refresh path (xao must not invoke the refresh token).
+  assert.equal((selected as { provider?: string }).provider, "grok-cli");
+});
+
 test("getProviderCredentials exposes copilotToken when present in providerSpecificData", async () => {
   const connection = await seedConnection("codex", {
     authType: "oauth",

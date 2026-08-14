@@ -76,6 +76,18 @@ export class XaiExecutor extends BaseExecutor {
   ): Promise<Partial<ProviderCredentials> | null> {
     if (this.provider !== "xai-oauth" || !credentials.refreshToken) return null;
 
+    // Borrowed grok-cli connection (PROVIDER_SEARCH_PAIRS xai-oauth↔grok-cli):
+    // xai-oauth transparently uses a grok-cli connection's access token to call
+    // api.x.ai, but must NOT invoke that connection's refresh token itself —
+    // grok-cli's own proactive scheduler (tokenHealthCheck, which refreshes by
+    // the connection's origin provider via GrokCliExecutor) owns the refresh.
+    // Returning null here makes the reactive refresh path skip; xao only reads
+    // the (scheduler-refreshed) access token.
+    const originProvider = (credentials as { provider?: string }).provider;
+    if (originProvider && originProvider !== "xai-oauth" && originProvider !== "xai") {
+      return null;
+    }
+
     try {
       const response = await fetch(this.config.tokenUrl || "https://auth.x.ai/oauth2/token", {
         method: "POST",
