@@ -1009,6 +1009,10 @@ const PROVIDER_SEARCH_PAIRS: string[][] = [
   // dashboard card — it must still see jina-ai / jina-reader keys
   // before falling through to JINA_AI_API_KEY.
   ["jina-ai", "jina-reader", "jina-search"],
+  // grok-cli (Grok Build) and xai-oauth (xao, api.x.ai) share the same OAuth
+  // client_id and token endpoint. xao borrows grok-cli's access token without
+  // invoking its own refresh — grok-cli's scheduler owns the refresh.
+  ["xai-oauth", "grok-cli"],
 ];
 /**
  * Resolve provider aliases (e.g., nvidia -> nvidia_nim) for DB lookup
