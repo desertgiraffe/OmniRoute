@@ -115,6 +115,13 @@ import {
   resolveWebSearchRouteOverride,
 } from "@omniroute/open-sse/services/webSearchRouting.ts";
 import {
+  isWebSearchSubRequest,
+  synthesizeWebSearchResponseEvents,
+  synthesizeWebSearchResponseJson,
+} from "@omniroute/open-sse/services/webSearchSynthesis.ts";
+import { resolveInterceptSearch } from "@/lib/db/interceptionRules";
+import { executeWebSearch } from "@/lib/search/executeWebSearch";
+import {
   generateSessionId as generateStableSessionId,
   touchSession,
   extractExternalSessionId,
@@ -606,6 +613,85 @@ export async function handleChat(
   // Settings are read only when a web-search tool is present; the override lands before
   // auto/combo resolution and the layer-1 fallback so the target's own handling applies.
   if (hasNativeWebSearchTool(body)) {
+    // Claude Code's built-in WebSearch tool sends a SEPARATE /v1/messages sub-request
+    // (routed to the small-fast model) carrying the native web_search_20250305 server
+    // tool, with the query hardcoded in the single user message:
+    //   "Perform a web search for the query: <query>"
+    // (original-source-code/.../WebSearchTool/WebSearchTool.ts:258). Claude Code parses
+    // the response for server_tool_use + web_search_tool_result blocks to render "Did N
+    // searches". OmniRoute's existing rewrite (→ omniroute_web_search function tool)
+    // makes the model emit a function tool_use Claude Code ignores → "Did 0 searches".
+    //
+    // Short-circuit that sub-request: detect it, run executeWebSearch against the
+    // configured search provider (e.g. zai-paas-search), and return a synthetic
+    // Anthropic response with native server-tool blocks — no upstream chat call.
+    // Only for Anthropic-format (/v1/messages) requests with interception enabled.
+    const endpointPath = new URL(request.url).pathname;
+    const isClaudeFormat = endpointPath.includes("/v1/messages");
+    if (isClaudeFormat) {
+      const subModel = resolvedModelStr.includes("/")
+        ? resolvedModelStr.split("/").slice(1).join("/")
+        : resolvedModelStr;
+      const subProvider = resolvedModelStr.includes("/")
+        ? resolvedModelStr.split("/")[0]
+        : resolvedModelStr;
+      const interceptOverride = resolveInterceptSearch(subProvider, subModel);
+      const subRequest = isWebSearchSubRequest(body, {
+        provider: subProvider,
+        sourceFormat: "claude",
+        interceptSearchOverride: interceptOverride,
+      });
+      if (subRequest) {
+        // Extract allowed_domains / blocked_domains from the server tool declaration.
+        const serverTool = (Array.isArray((body as any).tools) ? (body as any).tools : []).find(
+          (t: any) =>
+            t && typeof t.type === "string" && t.type.startsWith("web_search") && !t.function
+        );
+        const allowedDomains = Array.isArray(serverTool?.allowed_domains)
+          ? serverTool.allowed_domains
+          : undefined;
+        const blockedDomains = Array.isArray(serverTool?.blocked_domains)
+          ? serverTool.blocked_domains
+          : undefined;
+        const wantsStream = body?.stream === true;
+        log.info(
+          "WEBSEARCH-SYNTH",
+          `WebSearch sub-request → synthesizing server-tool response for query "${subRequest.query}" (provider=${subProvider}, model=${subModel}, stream=${wantsStream})`
+        );
+        const synthDeps = { executeSearch: executeWebSearch };
+        if (wantsStream) {
+          const events = await synthesizeWebSearchResponseEvents(
+            subRequest.query,
+            { model: resolvedModelStr, allowedDomains, blockedDomains },
+            synthDeps
+          );
+          const sseBody = events
+            .map((event) => {
+              const eventName = String(event.type);
+              return `event: ${eventName}\ndata: ${JSON.stringify(event)}\n\n`;
+            })
+            .join("");
+          return new Response(sseBody, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream; charset=utf-8",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            },
+          });
+        }
+        const message = await synthesizeWebSearchResponseJson(
+          subRequest.query,
+          { model: resolvedModelStr, allowedDomains, blockedDomains },
+          synthDeps
+        );
+        return new Response(JSON.stringify(message), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const wsSettings = await getCachedSettings().catch(() => ({}) as Record<string, unknown>);
     const wsRoute = resolveWebSearchRouteOverride(resolvedModelStr, body, wsSettings);
     if (wsRoute.wasRouted) {
