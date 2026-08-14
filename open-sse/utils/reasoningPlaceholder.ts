@@ -21,6 +21,16 @@ export function isInternalReasoningPlaceholder(value: unknown): boolean {
  * real content, or streamed deltas glue together with their spaces eaten.
  */
 export function stripInternalReasoningPlaceholder(value: string): string {
+  // #8341/#8382: gate the strip+collapse to chunks that actually contain the
+  // sentinel. Without this gate (reintroduced by #8254 during a conflict
+  // resolution), a pure-whitespace delta — e.g. the leading space GLM's
+  // tokenizer emits before a digit as its own chunk — hits
+  // `stripped.trim() === ""` and collapses to "", eating the space and gluing
+  // tokens together ("Season" + " " + "2" -> "Season2"). The early return
+  // preserves leading/trailing/whitespace-only deltas verbatim for the
+  // overwhelming majority of chunks that never carry the placeholder.
+  if (!value.includes(NON_ANTHROPIC_THINKING_PLACEHOLDER)) return value;
+
   const stripped = value.replaceAll(NON_ANTHROPIC_THINKING_PLACEHOLDER, "");
   return stripped.trim() === "" ? "" : stripped;
 }
