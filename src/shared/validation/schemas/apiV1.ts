@@ -576,6 +576,7 @@ export const v1SearchSchema = z.preprocess(
       .trim()
       .min(1, "Query is required")
       .max(500, "Query must be 500 characters or fewer"),
+<<<<<<< HEAD
     // Not a z.enum: the runtime catalog (SEARCH_PROVIDERS + SEARCH_PROVIDER_ALIASES in
     // open-sse/config/searchRegistry.ts) is the source of truth via resolveSearchProvider(),
     // which already returns a named "Unknown search provider: <id>" error for bad ids (see
@@ -583,9 +584,9 @@ export const v1SearchSchema = z.preprocess(
     // ever runs, hiding the informative message behind a generic Zod failure (#10849).
     // Known catalog ids as of this writing: serper-search, brave-search, perplexity-search,
     // exa-search, tavily-search, firecrawl, google-pse-search, linkup-search, ollama-search,
-    // searchapi-search, youcom-search, searxng-search, zai-search, jina-search, jina-ai,
-    // jina, duckduckgo-free, x-search, x_search (plus short aliases resolved by
-    // SEARCH_PROVIDER_ALIASES).
+    // searchapi-search, youcom-search, searxng-search, zai-search, zai-paas-search,
+    // jina-search, jina-ai, jina, duckduckgo-free, x-search, x_search (plus short aliases
+    // resolved by SEARCH_PROVIDER_ALIASES).
     provider: z.string().min(1).optional(),
     max_results: z.coerce.number().int().min(1).max(100).default(5),
     search_type: z.enum(["web", "news", "x"]).default("web"),

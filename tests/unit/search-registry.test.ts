@@ -19,7 +19,7 @@ const { computeCacheKey, getOrCoalesce, getCacheStats, SEARCH_CACHE_DEFAULT_TTL_
 
 // ─── Registry Tests ──────────────────────────────────────────
 
-test("SEARCH_PROVIDERS has all registered providers", () => {
+test("SEARCH_PROVIDERS has all 15 providers", () => {
   assert.ok(SEARCH_PROVIDERS["serper-search"], "serper should exist");
   assert.ok(SEARCH_PROVIDERS["brave-search"], "brave should exist");
   assert.ok(SEARCH_PROVIDERS["perplexity-search"], "perplexity-search should exist");
@@ -33,12 +33,18 @@ test("SEARCH_PROVIDERS has all registered providers", () => {
   assert.ok(SEARCH_PROVIDERS["searxng-search"], "searxng should exist");
   assert.ok(SEARCH_PROVIDERS["ollama-search"], "ollama-search should exist");
   assert.ok(SEARCH_PROVIDERS["zai-search"], "zai should exist");
+<<<<<<< HEAD
   assert.ok(SEARCH_PROVIDERS["jina-search"], "jina-search should exist");
   assert.ok(SEARCH_PROVIDERS["duckduckgo-free"], "duckduckgo-free should exist");
   assert.ok(SEARCH_PROVIDERS["x-search"], "x-search should exist");
   // #11140: context7 (library-docs search) is the 17th registered provider
   assert.ok(SEARCH_PROVIDERS["context7"], "context7 should exist");
   assert.equal(Object.keys(SEARCH_PROVIDERS).length, 17);
+=======
+  assert.ok(SEARCH_PROVIDERS["zai-paas-search"], "zai-paas-search should exist");
+  assert.ok(SEARCH_PROVIDERS["duckduckgo-free"], "duckduckgo-free should exist");
+  assert.equal(Object.keys(SEARCH_PROVIDERS).length, 15);
+>>>>>>> 2a9a0c7ba (feat(sse): add zai-paas-search provider (Z.AI PAAS v4 Web Search))
 });
 
 test("duckduckgo-free config is a no-key, fallback-only provider", () => {
@@ -170,10 +176,23 @@ test("zai-search config is correct", () => {
   assert.deepEqual(z.searchTypes, ["web"]);
 });
 
+test("zai-paas-search config is correct", () => {
+  const z = SEARCH_PROVIDERS["zai-paas-search"];
+  assert.equal(z.id, "zai-paas-search");
+  assert.equal(z.method, "POST");
+  assert.equal(z.authType, "apikey");
+  assert.equal(z.authHeader, "bearer");
+  assert.equal(z.baseUrl, "https://api.z.ai/api/paas/v4/web_search");
+  assert.equal(z.costPerQuery, 0);
+  assert.equal(z.freeMonthlyQuota, 0);
+  assert.deepEqual(z.searchTypes, ["web"]);
+  assert.equal(z.fallbackOnly, undefined, "zai-paas-search must not be fallback-only");
+});
+
 test("getAllSearchProviders returns flat list", () => {
   const all = getAllSearchProviders();
-  // #11140: 17 providers with context7 registered
-  assert.equal(all.length, 17);
+  // #11140: context7 registered; zai-paas-search added on top → 18 providers
+  assert.equal(all.length, 18);
   assert.ok(all.some((p) => p.id === "duckduckgo-free"));
   assert.ok(all.some((p) => p.id === "jina-search"));
   assert.ok(all.some((p) => p.id === "x-search"));
@@ -189,6 +208,7 @@ test("getAllSearchProviders returns flat list", () => {
   assert.ok(all.some((p) => p.id === "searxng-search"));
   assert.ok(all.some((p) => p.id === "ollama-search"));
   assert.ok(all.some((p) => p.id === "zai-search"));
+  assert.ok(all.some((p) => p.id === "zai-paas-search"));
   // Each entry should have id, name, searchTypes
   for (const p of all) {
     assert.ok(p.id);

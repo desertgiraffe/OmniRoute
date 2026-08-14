@@ -693,6 +693,65 @@ function buildOllamaRequest(
   };
 }
 
+// Z.AI PAAS v4 Web Search base URLs by region. The `region` is read from the
+// connection's providerSpecificData (or provider_options); "china" targets
+// open.bigmodel.cn, everything else (incl. unset) the international api.z.ai.
+// An explicit baseUrl override (providerSpecificData.baseUrl) always wins.
+const ZAI_PAAS_SEARCH_BASE_URLS = {
+  china: "https://open.bigmodel.cn/api/paas/v4/web_search",
+  international: "https://api.z.ai/api/paas/v4/web_search",
+} as const;
+
+// OmniRoute time_range → Z.AI search_recency_filter.
+const ZAI_PAAS_RECENCY_FILTER: Record<string, string> = {
+  day: "oneDay",
+  week: "oneWeek",
+  month: "oneMonth",
+  year: "oneYear",
+};
+
+function resolveZaiPaasBaseUrl(config: SearchProviderConfig, params: SearchRequestParams): string {
+  const override = getProviderSettingString(params, "baseUrl");
+  if (override) return override.replace(/\/+$/, "");
+  const region = getProviderSettingString(params, "region");
+  return region === "china"
+    ? ZAI_PAAS_SEARCH_BASE_URLS.china
+    : ZAI_PAAS_SEARCH_BASE_URLS.international;
+}
+
+function buildZaiPaasRequest(
+  config: SearchProviderConfig,
+  params: SearchRequestParams
+): { url: string; init: RequestInit } {
+  const body: Record<string, unknown> = {
+    search_engine: "search-prime",
+    search_query: params.query,
+    count: params.maxResults,
+  };
+
+  const { includes } = parseDomainFilter(params.domainFilter);
+  if (includes.length > 0) {
+    body.search_domain_filter = includes.join(",");
+  }
+
+  if (params.timeRange && params.timeRange !== "any") {
+    const recency = ZAI_PAAS_RECENCY_FILTER[params.timeRange];
+    if (recency) body.search_recency_filter = recency;
+  }
+
+  return {
+    url: resolveZaiPaasBaseUrl(config, params),
+    init: {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(params.token ? { Authorization: `Bearer ${params.token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+  };
+}
+
 type SearchRequestBuilder = (
   config: SearchProviderConfig,
   params: SearchRequestParams
@@ -714,6 +773,7 @@ const requestBuilders: Record<string, SearchRequestBuilder> = {
   "ollama-search": buildOllamaRequest,
   "jina-search": buildJinaSearchRequest,
   "x-search": xSearch.buildXSearchRequest,
+  "zai-paas-search": buildZaiPaasRequest,
 };
 
 function buildRequest(
@@ -1034,6 +1094,46 @@ function normalizeOllamaResponse(
   return { results, totalResults: results.length };
 }
 
+// Z.AI PAAS v4 Web Search normalizer — maps the {search_result: [...]} array
+// (title/link/content/publish_date/icon/media) into SearchResult. Operator-
+// confirmed: a missing/non-array search_result yields empty results with no
+// error surfaced (mirrors the existing zai-search MCP behavior).
+function normalizeZaiPaasResponse(
+  data: Record<string, unknown>,
+  _query: string,
+  _searchType: string
+): { results: SearchResult[]; totalResults: number | null } {
+  const now = new Date().toISOString();
+  // A missing/non-array search_result is treated as "unknown total" (null),
+  // not "zero results" — mirrors the operator-confirmed empty-results behavior.
+  const searchResult = data?.search_result;
+  if (!Array.isArray(searchResult)) {
+    return { results: [], totalResults: null };
+  }
+
+  const asString = (value: unknown): string | undefined =>
+    typeof value === "string" ? value : undefined;
+
+  const results = searchResult.map((item: unknown, idx: number) => {
+    const record = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    return makeResult(
+      "zai-paas-search",
+      {
+        title: asString(record.title),
+        url: asString(record.link),
+        snippet: asString(record.content) || "",
+        published_at: asString(record.publish_date),
+        favicon_url: asString(record.icon),
+        source_type: asString(record.media),
+      },
+      idx,
+      now
+    );
+  });
+
+  return { results, totalResults: results.length };
+}
+
 // ── Z.AI Coding Plan Search MCP Execution ───────────────────────────
 
 // Schema for the Z.AI MCP web_search_prime tool result. Z.AI double-encodes
@@ -1290,6 +1390,7 @@ const responseNormalizers: Record<string, SearchResponseNormalizer> = {
   "ollama-search": normalizeOllamaResponse,
   "jina-search": normalizeJinaSearchResponse,
   "x-search": normalizeXSearchResponse,
+  "zai-paas-search": normalizeZaiPaasResponse,
 };
 
 function normalizeResponse(

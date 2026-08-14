@@ -48,10 +48,11 @@ const route = await import("../../src/app/api/search/providers/route.ts");
 // Constants
 // ---------------------------------------------------------------------------
 
-// 17 search-kind providers: serper, brave, perplexity, exa, tavily, firecrawl,
+// 18 search-kind providers: serper, brave, perplexity, exa, tavily, firecrawl,
 // google-pse, linkup, searchapi, youcom, searxng, ollama, zai, jina-search,
-// context7 (#11140), duckduckgo-free, x-search (registry open-sse/config/searchRegistry.ts).
-const EXPECTED_SEARCH_COUNT = 17;
+// context7 (#11140), zai-paas-search, duckduckgo-free, x-search
+// (registry open-sse/config/searchRegistry.ts).
+const EXPECTED_SEARCH_COUNT = 18;
 const EXPECTED_FETCH_COUNT = 4;
 const EXPECTED_TOTAL = EXPECTED_SEARCH_COUNT + EXPECTED_FETCH_COUNT;
 
@@ -138,7 +139,7 @@ test("search-providers-catalog: returns 401 for unauthenticated requests when au
   assert.ok(!bodyStr.includes(" at /"), "error body must not contain stack trace");
 });
 
-test("search-providers-catalog: returns 21 providers (17 search + 4 fetch)", async () => {
+test("search-providers-catalog: returns 22 providers (18 search + 4 fetch)", async () => {
   const req = await buildAuthRequest();
   const res = await route.GET(req);
 
