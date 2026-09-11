@@ -19,7 +19,7 @@ const { computeCacheKey, getOrCoalesce, getCacheStats, SEARCH_CACHE_DEFAULT_TTL_
 
 // ─── Registry Tests ──────────────────────────────────────────
 
-test("SEARCH_PROVIDERS has all 15 providers", () => {
+test("SEARCH_PROVIDERS has all 18 providers", () => {
   assert.ok(SEARCH_PROVIDERS["serper-search"], "serper should exist");
   assert.ok(SEARCH_PROVIDERS["brave-search"], "brave should exist");
   assert.ok(SEARCH_PROVIDERS["perplexity-search"], "perplexity-search should exist");
@@ -33,18 +33,12 @@ test("SEARCH_PROVIDERS has all 15 providers", () => {
   assert.ok(SEARCH_PROVIDERS["searxng-search"], "searxng should exist");
   assert.ok(SEARCH_PROVIDERS["ollama-search"], "ollama-search should exist");
   assert.ok(SEARCH_PROVIDERS["zai-search"], "zai should exist");
-<<<<<<< HEAD
   assert.ok(SEARCH_PROVIDERS["jina-search"], "jina-search should exist");
-  assert.ok(SEARCH_PROVIDERS["duckduckgo-free"], "duckduckgo-free should exist");
-  assert.ok(SEARCH_PROVIDERS["x-search"], "x-search should exist");
-  // #11140: context7 (library-docs search) is the 17th registered provider
   assert.ok(SEARCH_PROVIDERS["context7"], "context7 should exist");
-  assert.equal(Object.keys(SEARCH_PROVIDERS).length, 17);
-=======
   assert.ok(SEARCH_PROVIDERS["zai-paas-search"], "zai-paas-search should exist");
   assert.ok(SEARCH_PROVIDERS["duckduckgo-free"], "duckduckgo-free should exist");
-  assert.equal(Object.keys(SEARCH_PROVIDERS).length, 15);
->>>>>>> 2a9a0c7ba (feat(sse): add zai-paas-search provider (Z.AI PAAS v4 Web Search))
+  assert.ok(SEARCH_PROVIDERS["x-search"], "x-search should exist");
+  assert.equal(Object.keys(SEARCH_PROVIDERS).length, 18);
 });
 
 test("duckduckgo-free config is a no-key, fallback-only provider", () => {

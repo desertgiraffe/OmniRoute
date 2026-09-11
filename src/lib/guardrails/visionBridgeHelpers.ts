@@ -232,20 +232,46 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
             const np = nested as Record<string, unknown> | null;
             if (!np) continue;
             const npType = typeof np.type === "string" ? np.type : "";
-            if (REPLACEABLE_IMAGE_SHAPES.has(npType as MediaPart["shape"])) {
+            if (npType === "image_url" || npType === "image" || npType === "input_image") {
               if (npType === "image_url") {
                 const url = (np.image_url as { url?: string } | undefined)?.url;
-                if (url) results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: url, imageType: "image_url" });
+                if (url)
+                  results.push({
+                    messageIndex: msgIdx,
+                    partIndex: partIdx,
+                    imageUrl: url,
+                    imageType: "image_url",
+                  });
               } else if (npType === "image") {
-                const source = np.source as { type?: string; media_type?: string; data?: string; url?: string } | undefined;
+                const source = np.source as
+                  { type?: string; media_type?: string; data?: string; url?: string } | undefined;
                 if (source?.type === "base64") {
-                  results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: `data:${source.media_type};base64,${source.data}`, imageType: "image" });
+                  results.push({
+                    messageIndex: msgIdx,
+                    partIndex: partIdx,
+                    imageUrl: `data:${source.media_type};base64,${source.data}`,
+                    imageType: "image",
+                  });
                 } else if (source?.type === "url" && source.url) {
-                  results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: source.url, imageType: "url" });
+                  results.push({
+                    messageIndex: msgIdx,
+                    partIndex: partIdx,
+                    imageUrl: source.url,
+                    imageType: "url",
+                  });
                 }
               } else if (npType === "input_image") {
-                const url = typeof np.image_url === "string" ? np.image_url : (np.image_url as { url?: string } | undefined)?.url;
-                if (url) results.push({ messageIndex: msgIdx, partIndex: partIdx, imageUrl: url, imageType: "image_url" });
+                const url =
+                  typeof np.image_url === "string"
+                    ? np.image_url
+                    : (np.image_url as { url?: string } | undefined)?.url;
+                if (url)
+                  results.push({
+                    messageIndex: msgIdx,
+                    partIndex: partIdx,
+                    imageUrl: url,
+                    imageType: "image_url",
+                  });
               }
             }
           }
