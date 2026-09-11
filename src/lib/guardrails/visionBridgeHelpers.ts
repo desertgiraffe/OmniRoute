@@ -182,6 +182,7 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
   }
 
   return results;
+}
 
 /**
  * Resolve image URL to data URI format for vision model.
