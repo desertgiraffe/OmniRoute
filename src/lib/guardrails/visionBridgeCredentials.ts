@@ -90,24 +90,57 @@ function loadProvidersModule(): Promise<typeof import("@/lib/db/providers")> {
  * The provider prefix is resolved alias→canonical id before querying
  * `provider_connections` (the column stores the id, e.g. "opencode" for the
  * "oc" alias — #10702: an alias-keyed query returned zero rows and excluded
- * every candidate). No-auth providers (NOAUTH_PROVIDERS) need no stored API
- * key: their effective credential is the synthetic "noauth" connection, so
- * an empty active set is usable for them (unlike keyed providers). A stored
- * row with a terminal status (disabled/banned/expired) still blocks the
- * provider; any other row is treated as usable (the key requirement does not
- * apply — a noauth row carries no API key by design).
+ * every candidate). Custom/compatible providers (e.g. `ball`, `78code`) are
+ * stored under internal ids like `anthropic-compatible-<uuid>` — the static
+ * `resolveProviderId` map doesn't know about them, so we also expand via
+ * `provider_nodes` (same pattern as `auth.ts::getProviderSearchPool`, #3058).
+ * No-auth providers (NOAUTH_PROVIDERS) need no stored API key: their effective
+ * credential is the synthetic "noauth" connection, so an empty active set is
+ * usable for them (unlike keyed providers). A stored row with a terminal
+ * status (disabled/banned/expired) still blocks the provider; any other row
+ * is treated as usable (the key requirement does not apply — a noauth row
+ * carries no API key by design).
  */
 export async function hasUsableCredentialsForModel(model: string): Promise<boolean | null> {
   const rawProvider = typeof model === "string" ? model.split("/")[0]?.trim() : "";
   if (!rawProvider) return null;
   const provider = resolveProviderId(rawProvider);
   const isNoAuth = isNoAuthProviderKey(rawProvider, provider);
+
+  // Build the set of provider ids to search in provider_connections.
+  // Built-in providers resolve through the static alias map; custom/compatible
+  // providers need provider_nodes expansion to find their internal
+  // `anthropic-compatible-<uuid>` / `openai-compatible-<uuid>` ids.
+  const searchIds = new Set<string>([provider]);
+  try {
+    const { getCachedProviderNodes } = await import("@/lib/db/readCache");
+    const nodes = await getCachedProviderNodes();
+    if (Array.isArray(nodes)) {
+      for (const node of nodes) {
+        const nodeRecord = node as Record<string, unknown>;
+        const nodePrefix = typeof nodeRecord.prefix === "string" ? nodeRecord.prefix.trim() : "";
+        const nodeId = typeof nodeRecord.id === "string" ? nodeRecord.id.trim() : "";
+        if (nodePrefix && nodeId && nodePrefix === rawProvider) {
+          searchIds.add(nodeId);
+        }
+      }
+    }
+  } catch {
+    // provider_nodes unavailable (early boot / tests) — search with just the
+    // resolved provider id, same as before this fix.
+  }
+
   try {
     const { getProviderConnections } = await loadProvidersModule();
-    const connections = await getProviderConnections({ provider, isActive: true });
-    if (!Array.isArray(connections)) return null;
-    // Empty active set: keyed providers are definitively unusable; no-auth
-    // providers still work through the synthetic "noauth" connection.
+    // Query all candidate provider ids in parallel — at least one needs a
+    // usable connection for the model to be eligible.
+    const connectionResults = await Promise.all(
+      Array.from(searchIds).map(async (pid) => {
+        const conns = await getProviderConnections({ provider: pid, isActive: true });
+        return Array.isArray(conns) ? conns : [];
+      })
+    );
+    const connections = connectionResults.flat();
     if (connections.length === 0) return isNoAuth;
     // No-auth rows store no API key (authType "noauth" + empty apiKey would
     // fail the generic key check) — only a terminal status blocks them.
